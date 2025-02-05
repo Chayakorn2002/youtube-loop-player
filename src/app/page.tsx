@@ -4,6 +4,21 @@ import { useState, useEffect, useRef } from "react";
 import { Slider } from "@mui/material";
 
 export default function Home() {
+  const favorites = [
+    {
+      title: "Maroon 5 - Sunday Morning (Bossa Cover)",
+      url: "https://www.youtube.com/watch?v=Zvul7tj3EkE",
+      startTime: 148,
+      endTime: 161,
+    },
+    {
+      title: "【ピアノ演奏】King Gnu「一途」を弾いてみた",
+      url: "https://youtu.be/cKDd44yzIQY?si=TC0e9IKmhc7bkU8K",
+      startTime: 206,
+      endTime: 240,
+    },
+  ];
+
   const [videoId, setVideoId] = useState<string>("");
   const [inputUrl, setInputUrl] = useState<string>("");
   const [startTime, setStartTime] = useState<number>(0);
@@ -25,7 +40,7 @@ export default function Home() {
         const id = extractVideoId(savedUrl);
         if (id) {
           setVideoId(id);
-          initPlayer(id);
+          initPlayer(id, savedStart, savedEnd);
         }
       }
     });
@@ -62,16 +77,16 @@ export default function Home() {
     const id = extractVideoId(inputUrl);
     if (id) {
       setVideoId(id);
-      initPlayer(id);
+      initPlayer(id, startTime, endTime);
     } else {
       alert("Invalid YouTube URL");
     }
   };
 
-  const initPlayer = (id: string) => {
+  const initPlayer = (id: string, start: number, end: number) => {
     if (!(window as any).YT || !(window as any).YT.Player) {
       console.warn("YouTube API not loaded yet. Retrying...");
-      setTimeout(() => initPlayer(id), 500);
+      setTimeout(() => initPlayer(id, start, end), 5000);
       return;
     }
 
@@ -83,10 +98,11 @@ export default function Home() {
       height: "360",
       width: "640",
       videoId: id,
-      playerVars: { start: startTime, end: endTime },
+      playerVars: { start, end, autoplay: 1 },
       events: {
         onReady: (event: any) => {
           setVideoDuration(event.target.getDuration());
+          playerRef.current = event.target;
         },
         onStateChange: (event: any) => {
           if (event.data === 0) {
@@ -109,29 +125,54 @@ export default function Home() {
   };
 
   const startLoop = () => {
-    if (
-      !playerRef.current ||
-      typeof playerRef.current.getCurrentTime !== "function"
-    ) {
+    const player = playerRef.current;
+
+    if (!player || typeof player.getCurrentTime !== "function") {
       console.warn("Player is not ready yet.");
       return;
     }
 
-    playerRef.current.seekTo(startTime);
-    playerRef.current.playVideo();
+    player.seekTo(startTime, true);
 
-    playerRef.current.addEventListener("onStateChange", (event: any) => {
-      if (event.data === 1) {
+    const checkSeek = setInterval(() => {
+      if (Math.abs(player.getCurrentTime() - startTime) < 0.5) {
+        clearInterval(checkSeek);
+        player.playVideo();
+        console.log("Current Time after seek:", player.getCurrentTime());
+
         const checkLoop = setInterval(() => {
-          if (playerRef.current.getCurrentTime() >= endTime) {
-            playerRef.current.seekTo(startTime);
+          if (player.getCurrentTime() >= endTime) {
+            player.seekTo(startTime, true);
           }
-        }, 500);
-        playerRef.current.checkLoop = checkLoop;
-      } else if (event.data === 2 && playerRef.current.checkLoop) {
-        clearInterval(playerRef.current.checkLoop);
+        }, 250);
+
+        player.addEventListener("onStateChange", (event: any) => {
+          if (event.data !== 1) {
+            clearInterval(checkLoop);
+          }
+        });
       }
-    });
+    }, 100);
+  };
+
+  const handleFavoriteSelect = (fav: {
+    title: string;
+    url: string;
+    startTime: number;
+    endTime: number;
+  }) => {
+    setInputUrl(fav.url);
+    setStartTime(fav.startTime);
+    setEndTime(fav.endTime);
+    localStorage.setItem("youtubeUrl", fav.url);
+    localStorage.setItem("startTime", String(fav.startTime));
+    localStorage.setItem("endTime", String(fav.endTime));
+
+    const id = extractVideoId(fav.url);
+    if (id) {
+      setVideoId(id);
+      initPlayer(id, fav.startTime, fav.endTime);
+    }
   };
 
   const formatTime = (seconds: number) => {
@@ -206,6 +247,25 @@ export default function Home() {
           </button>
         </div>
       )}
+      <div className="bg-white/90 p-5 rounded-2xl shadow-lg w-full max-w-lg text-center backdrop-blur-lg mt-5">
+        <h2 className="text-lg font-semibold text-gray-700 mb-3">
+          🎧 Try Tan's Favorite
+        </h2>
+        <ul className="space-y-2">
+          {favorites.map((fav, index) => (
+            <li
+              key={index}
+              className="cursor-pointer p-3 rounded-lg bg-pink-100 hover:bg-pink-200 transition-all text-pink-700 font-medium shadow-md"
+              onClick={() => handleFavoriteSelect(fav)}
+            >
+              {fav.title} <br />
+              <span className="text-sm text-gray-600">
+                {formatTime(fav.startTime)} - {formatTime(fav.endTime)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
     </main>
   );
 }
