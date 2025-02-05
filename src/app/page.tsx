@@ -40,9 +40,14 @@ export default function Home() {
         const id = extractVideoId(savedUrl);
         if (id) {
           setVideoId(id);
-          initPlayer(id, savedStart, savedEnd);
+          initPlayer(id);
         }
       }
+
+      console.log("Loaded from Local Storage");
+      console.log("URL:", savedUrl);
+      console.log("Start Time:", savedStart);
+      console.log("End Time:", savedEnd);
     });
   }, []);
 
@@ -71,22 +76,27 @@ export default function Home() {
   };
 
   const handleLoadVideo = () => {
-    if (!inputUrl) return;
+    if (!inputUrl) {
+      alert("Please enter a YouTube URL");
+      return;
+    }
+
     localStorage.setItem("youtubeUrl", inputUrl);
 
     const id = extractVideoId(inputUrl);
     if (id) {
       setVideoId(id);
-      initPlayer(id, startTime, endTime);
+      initPlayer(id);
     } else {
       alert("Invalid YouTube URL");
     }
   };
 
-  const initPlayer = (id: string, start: number, end: number) => {
+  const initPlayer = (id: string, startTime = 0, endTime = 0) => {
     if (!(window as any).YT || !(window as any).YT.Player) {
       console.warn("YouTube API not loaded yet. Retrying...");
-      setTimeout(() => initPlayer(id, start, end), 5000);
+      alert("YouTube API not loaded yet. Retrying...");
+      setTimeout(() => initPlayer(id), 500);
       return;
     }
 
@@ -94,11 +104,18 @@ export default function Home() {
       playerRef.current.destroy();
     }
 
+    const containerWidth = window.innerWidth * 0.8;
+    const playerWidth = Math.min(containerWidth, 640);
+    const playerHeight = (playerWidth / 16) * 9;
+
+    console.log("start time", startTime);
+    console.log("end time", endTime);
+
     playerRef.current = new (window as any).YT.Player("youtube-player", {
-      height: "360",
-      width: "640",
+      height: playerHeight.toString(),
+      width: playerWidth.toString(),
       videoId: id,
-      playerVars: { start, end, autoplay: 1 },
+      playerVars: { start: startTime, end: endTime },
       events: {
         onReady: (event: any) => {
           setVideoDuration(event.target.getDuration());
@@ -132,17 +149,18 @@ export default function Home() {
       return;
     }
 
-    player.seekTo(startTime, true);
+    console.log("Start Time:", startTime);
+    console.log("End Time:", endTime);
 
-    const checkSeek = setInterval(() => {
-      if (Math.abs(player.getCurrentTime() - startTime) < 0.5) {
-        clearInterval(checkSeek);
-        player.playVideo();
-        console.log("Current Time after seek:", player.getCurrentTime());
+    player.seekTo(startTime);
+    player.playVideo();
 
+    const onPlayerStateChange = (event: any) => {
+      if (event.data === 1) { // 1 is the code for playing
         const checkLoop = setInterval(() => {
-          if (player.getCurrentTime() >= endTime) {
-            player.seekTo(startTime, true);
+          const currentTime = player.getCurrentTime();
+          if (currentTime >= endTime) {
+            player.seekTo(startTime);
           }
         }, 250);
 
@@ -152,7 +170,9 @@ export default function Home() {
           }
         });
       }
-    }, 100);
+    };
+
+    player.addEventListener("onStateChange", onPlayerStateChange);
   };
 
   const handleFavoriteSelect = (fav: {
